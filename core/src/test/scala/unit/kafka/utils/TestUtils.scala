@@ -383,7 +383,9 @@ object TestUtils extends Logging {
                         metadataFetchTimeout: Long = 3000L,
                         blockOnBufferFull: Boolean = true,
                         bufferSize: Long = 1024L * 1024L,
-                        retries: Int = 0) : KafkaProducer[Array[Byte],Array[Byte]] = {
+                        retries: Int = 0,
+                        preInitTimeout: Option[Long] = None,
+                        preInitTopics: Option[String] = None) : KafkaProducer[Array[Byte],Array[Byte]] = {
     import org.apache.kafka.clients.producer.ProducerConfig
 
     val producerProps = new Properties()
@@ -397,6 +399,10 @@ object TestUtils extends Logging {
     producerProps.put(ProducerConfig.RECONNECT_BACKOFF_MS_CONFIG, "200")
     producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
     producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
+
+    preInitTimeout.map(v => producerProps.put(ProducerConfig.PRE_INITIALIZE_TIMEOUT_MS_CONFIG, v.toString))
+    preInitTopics.map(producerProps.put(ProducerConfig.PRE_INITIALIZE_TOPICS_CONFIG, _))
+
     return new KafkaProducer[Array[Byte],Array[Byte]](producerProps)
   }
 

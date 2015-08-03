@@ -180,6 +180,14 @@ public class ProducerConfig extends AbstractConfig {
     public static final String VALUE_SERIALIZER_CLASS_CONFIG = "value.serializer";
     private static final String VALUE_SERIALIZER_CLASS_DOC = "Serializer class for value that implements the <code>Serializer</code> interface.";
 
+    /** <code>pre.initialize.topics</code> */
+    public static final String PRE_INITIALIZE_TOPICS_CONFIG = "pre.initialize.topics";
+    private static final String PRE_INITIALIZE_TOPICS_DOC = "Comma delimited list of topics that have metadata populated on producer creation. By passing in a list and specifying pre.initialize.timeout, it can be guaranteed that the producer will never block.";
+
+    /** <code>pre.initialize.timeout</code> */
+    public static final String PRE_INITIALIZE_TIMEOUT_MS_CONFIG = "pre.initialize.timeout.ms";
+    private static final String PRE_INITIALIZE_TIMEOUT_MS_DOC = "Only used along with pre.initialize.topics. If the producer is unable to populate meta within this amount of time producer creation will throw an exception.";
+
     static {
         config = new ConfigDef().define(BOOTSTRAP_SERVERS_CONFIG, Type.LIST, Importance.HIGH, BOOSTRAP_SERVERS_DOC)
                                 .define(BUFFER_MEMORY_CONFIG, Type.LONG, 32 * 1024 * 1024L, atLeast(0L), Importance.HIGH, BUFFER_MEMORY_DOC)
@@ -204,6 +212,8 @@ public class ProducerConfig extends AbstractConfig {
                                         Importance.MEDIUM,
                                         MAX_REQUEST_SIZE_DOC)
                                 .define(BLOCK_ON_BUFFER_FULL_CONFIG, Type.BOOLEAN, true, Importance.LOW, BLOCK_ON_BUFFER_FULL_DOC)
+                                .define(PRE_INITIALIZE_TOPICS_CONFIG, Type.STRING, "", Importance.LOW, PRE_INITIALIZE_TOPICS_DOC)
+                                .define(PRE_INITIALIZE_TIMEOUT_MS_CONFIG, Type.LONG, 0L, atLeast(0L), Importance.LOW, PRE_INITIALIZE_TIMEOUT_MS_DOC)
                                 .define(RECONNECT_BACKOFF_MS_CONFIG, Type.LONG, 10L, atLeast(0L), Importance.LOW, RECONNECT_BACKOFF_MS_DOC)
                                 .define(METRIC_REPORTER_CLASSES_CONFIG, Type.LIST, "", Importance.LOW, METRIC_REPORTER_CLASSES_DOC)
                                 .define(RETRY_BACKOFF_MS_CONFIG, Type.LONG, 100L, atLeast(0L), Importance.LOW, RETRY_BACKOFF_MS_DOC)

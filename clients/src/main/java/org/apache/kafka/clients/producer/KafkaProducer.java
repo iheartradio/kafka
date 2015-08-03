@@ -51,6 +51,10 @@ import org.apache.kafka.common.utils.SystemTime;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 
 /**
  * A Kafka client that publishes records to the Kafka cluster.
@@ -80,6 +84,9 @@ public class KafkaProducer<K,V> implements Producer<K,V> {
     private final Serializer<V> valueSerializer;
     private final ProducerConfig producerConfig;
     private static final AtomicInteger producerAutoId = new AtomicInteger(1);
+
+    private Boolean initialized = false;
+    ExecutorService initExecutor = null;
 
     /**
      * A producer is instantiated by providing a set of key-value pairs as configuration. Valid configuration strings
@@ -228,7 +235,59 @@ public class KafkaProducer<K,V> implements Producer<K,V> {
             this.valueSerializer = valueSerializer;
 
         config.logUnused();
+
+        final List<String> preInitTopics = new ArrayList<String>();
+        for (String topic : config.getString(ProducerConfig.PRE_INITIALIZE_TOPICS_CONFIG).split(",")) {
+            if (!topic.isEmpty())
+                preInitTopics.add(topic);
+        }
+        final Long preInitTimeout = config.getLong(ProducerConfig.PRE_INITIALIZE_TIMEOUT_MS_CONFIG);
+
+        // Kick off a thread to get meta for any specified topics. This will ensure that the producer doesn't block
+        if (preInitTopics.size() > 0) {
+            FutureTask<Boolean> future =
+                    new FutureTask<Boolean>(new Callable<Boolean>() {
+                        public Boolean call() {
+                            return initializeProducer(preInitTopics);
+                        }
+                    });
+            initExecutor = Executors.newSingleThreadExecutor();
+            initExecutor.execute(future);
+
+            if (preInitTimeout > 0) {
+                try {
+                    future.get(preInitTimeout, TimeUnit.MILLISECONDS);
+                } catch (Exception e) {
+                    log.error("Failed to initialize the producer meta for topics(" + preInitTopics + ") within preinit timeout: " + preInitTimeout.toString() + "ms. Sends will fail until initialization completes.", e);
+                }
+            }
+        } else {
+            // Nothing to initialize
+            initialized = true;
+        }
+
         log.debug("Kafka producer started");
+    }
+
+    /**
+     * If the preinit metadata settings are used, will indicate that the producer was successfully initialized
+     *
+     */
+    public Boolean isInitialized() {
+        return initialized;
+    }
+
+    private Boolean initializeProducer(List<String> preInitTopics) {
+        for (String topic : preInitTopics) {
+            // We wait forever here, this method should always be running in its own thread
+            waitOnMetadata(topic, Long.MAX_VALUE);
+        }
+
+        log.info("Successfully initialized kafka producer for topics: " + preInitTopics);
+
+        // If we got here, we are good.
+        initialized = true;
+        return true;
     }
 
     private static int parseAcks(String acksString) {
@@ -311,6 +370,13 @@ public class KafkaProducer<K,V> implements Producer<K,V> {
     @Override
     public Future<RecordMetadata> send(ProducerRecord<K,V> record, Callback callback) {
         try {
+            if (!initialized) {
+                final IllegalStateException e = new IllegalStateException("Producer is not yet initialized");
+                if (callback != null)
+                    callback.onCompletion(null, e);
+                return new FutureFailure(e);
+            }
+
             // first make sure the metadata for the topic is available
             waitOnMetadata(record.topic(), this.metadataFetchTimeoutMs);
             byte[] serializedKey;
@@ -418,11 +484,18 @@ public class KafkaProducer<K,V> implements Producer<K,V> {
     public void close() {
         log.trace("Closing the Kafka producer.");
         this.sender.initiateClose();
+
+        if (this.initExecutor != null) {
+            this.initExecutor.shutdown();
+        }
+
         try {
             this.ioThread.join();
         } catch (InterruptedException e) {
             throw new KafkaException(e);
         }
+
+
         this.metrics.close();
         this.keySerializer.close();
         this.valueSerializer.close();
