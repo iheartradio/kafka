@@ -371,7 +371,10 @@ public class KafkaProducer<K,V> implements Producer<K,V> {
     public Future<RecordMetadata> send(ProducerRecord<K,V> record, Callback callback) {
         try {
             if (!initialized) {
-                return new FutureFailure(new IllegalStateException("Producer is not yet initialized"));
+                final IllegalStateException e = new IllegalStateException("Producer is not yet initialized");
+                if (callback != null)
+                    callback.onCompletion(null, e);
+                return new FutureFailure(e);
             }
 
             // first make sure the metadata for the topic is available
